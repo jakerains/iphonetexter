@@ -31,7 +31,7 @@ from pathlib import Path
 from typing import AsyncIterator, Optional
 
 from fastapi import FastAPI, Form, HTTPException, Request, UploadFile
-from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
@@ -265,6 +265,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 app = FastAPI(lifespan=lifespan, title="imsg local UI")
 app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
+
+
+@app.get("/favicon.ico", include_in_schema=False)
+async def favicon() -> Response:
+    return Response(status_code=204)
 
 
 def render(request: Request, template: str, **ctx) -> HTMLResponse:

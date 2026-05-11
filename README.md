@@ -9,6 +9,29 @@ also need macOS Automation permission for Messages.app. Advanced IMCore features
 such as read receipts, typing indicators, and injection status are opt-in and
 are increasingly limited by macOS 26.
 
+## Quick start (web UI)
+
+If you just want the easiest path — a local browser UI for browsing chats,
+sending one-offs, and running bulk jobs — clone the repo and run:
+
+```bash
+./start.sh
+```
+
+That single command:
+
+1. Builds the `imsg` Swift CLI into `bin/imsg` (first run only, ~1–2 minutes).
+2. Creates a Python virtualenv in `.venv/` and installs the web UI deps.
+3. Launches the FastAPI web UI on <http://127.0.0.1:8765/> and opens it in
+   your browser.
+
+Re-running the script is cheap — it skips the build and venv steps if they're
+already done. `make start` works the same way.
+
+**Requirements:** macOS 14+, Xcode Command Line Tools (`xcode-select --install`),
+Python 3.10+, and macOS Full Disk Access + Messages.app Automation permission
+for the terminal you launch from (see [Permissions Troubleshooting](#permissions-troubleshooting)).
+
 ## Highlights
 
 - Read recent chats and message history without modifying `chat.db`.

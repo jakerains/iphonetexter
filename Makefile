@@ -1,9 +1,10 @@
 SHELL := /bin/bash
 
-.PHONY: help format lint test build imsg clean build-dylib
+.PHONY: help format lint test build imsg clean build-dylib start
 
 help:
 	@printf "%s\n" \
+		"make start      - one-command launch: build CLI, set up venv, open web UI" \
 		"make format     - swift format in-place" \
 		"make lint       - swift format lint + swiftlint" \
 		"make test       - sync version, patch deps, run swift test" \
@@ -11,6 +12,9 @@ help:
 		"make build-dylib - build injectable dylib for Messages.app" \
 		"make imsg       - clean rebuild + run debug binary (ARGS=...)" \
 		"make clean      - swift package clean"
+
+start:
+	./start.sh
 
 format:
 	swift format --in-place --recursive Sources Tests
