@@ -18,15 +18,41 @@ sending one-offs, and running bulk jobs — clone the repo and run:
 ./start.sh
 ```
 
-That single command:
+That single command bootstraps everything and drops you into an interactive
+control panel:
 
-1. Builds the `imsg` Swift CLI into `bin/imsg` (first run only, ~1–2 minutes).
-2. Creates a Python virtualenv in `.venv/` and installs the web UI deps.
-3. Launches the FastAPI web UI on <http://127.0.0.1:8765/> and opens it in
-   your browser.
+1. Checks macOS prereqs (python3, swift, make) with pass/fail per check.
+2. Detects Full Disk Access by trying to read `chat.db`; if missing, walks
+   you through granting it (auto-opens the right System Settings pane and
+   names your specific terminal app, e.g. Warp.app, iTerm.app).
+3. Builds the `imsg` Swift CLI into `bin/imsg` (first run only, ~1–2 minutes,
+   with a live tail of each "Compiling …" line).
+4. Creates `.venv/` and installs the web UI + control-panel dependencies.
+5. Hands off to `scripts/launcher.py` — a `rich`-based control panel with a
+   status header (imsg version, repo SHA, FDA state, server status) and an
+   arrow-key menu:
 
-Re-running the script is cheap — it skips the build and venv steps if they're
-already done. `make start` works the same way.
+   - **Start web UI** — launches FastAPI on <http://127.0.0.1:8765/> and
+     opens it in your browser.
+   - **Update from origin** — `git pull`, then rebuilds the Swift CLI only
+     if `Sources/` changed; re-runs pip in case dependencies moved.
+   - **Reinstall from scratch** — nukes `.venv/` and `bin/`, then re-runs
+     the bootstrap.
+   - **Diagnose permissions** — re-checks FDA, exercises `imsg chats`
+     end-to-end, optionally probes Messages.app Automation.
+   - **View recent logs** — tails the last web UI session's stdout.
+
+Re-runs are cheap — the bootstrap skips build/venv/pip steps it's already done.
+For one-shot non-interactive invocations:
+
+```bash
+./start.sh start     # bootstrap + launch web UI directly (no menu)
+./start.sh update    # bootstrap + run update flow
+./start.sh diag      # bootstrap + run diagnostics
+./start.sh install   # bootstrap + reinstall from scratch
+```
+
+`make start` works the same way; `make start ARGS=start` passes through.
 
 **Requirements:** macOS 14+, Xcode Command Line Tools (`xcode-select --install`),
 Python 3.10+, and macOS Full Disk Access + Messages.app Automation permission

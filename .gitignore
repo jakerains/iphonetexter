@@ -48,3 +48,6 @@ __pycache__/
 *.pyc
 *.pyo
 .venv/
+
+# Launcher session logs
+.logs/

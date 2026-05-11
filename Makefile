@@ -4,7 +4,8 @@ SHELL := /bin/bash
 
 help:
 	@printf "%s\n" \
-		"make start      - one-command launch: build CLI, set up venv, open web UI" \
+		"make start      - bootstrap (build CLI, venv, deps) then open the control panel" \
+		"                  (./start.sh start to skip the menu and launch the web UI)" \
 		"make format     - swift format in-place" \
 		"make lint       - swift format lint + swiftlint" \
 		"make test       - sync version, patch deps, run swift test" \
@@ -14,7 +15,7 @@ help:
 		"make clean      - swift package clean"
 
 start:
-	./start.sh
+	./start.sh $(ARGS)
 
 format:
 	swift format --in-place --recursive Sources Tests
