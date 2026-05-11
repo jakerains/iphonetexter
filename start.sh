@@ -97,6 +97,14 @@ ${C_BOLD}${C_CYAN}iphonetexter${C_RESET}  ${C_DIM}local web UI for imsg${C_RESET
 ${C_DIM}repo:${C_RESET} https://github.com/jakerains/iphonetexter
 EOF
 
+# ---------- behind-origin hint (uses cached state, no network call) ----------
+behind="$(git -C "$REPO_ROOT" rev-list --count HEAD..@{u} 2>/dev/null || echo 0)"
+if [[ "${behind:-0}" -gt 0 ]]; then
+  printf "\n  %s* %s commit(s) behind origin.%s Run %siphonetexter update%s or %sgit pull%s to update.\n" \
+    "$C_YELLOW" "$behind" "$C_RESET" "$C_BOLD" "$C_RESET" "$C_BOLD" "$C_RESET"
+fi
+unset behind
+
 # ---------- platform + prereq checks ----------
 step "Checking prerequisites"
 [[ "$(uname -s)" == "Darwin" ]] || die "iphonetexter is macOS-only (it drives Messages.app)."

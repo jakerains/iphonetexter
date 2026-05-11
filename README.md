@@ -31,6 +31,24 @@ repo, run `make install` again from the new location. Override the install
 directory with `make install INSTALL_DIR=/usr/local/bin`. Remove with
 `make uninstall`.)
 
+### Upgrading an existing clone
+
+If you cloned this repo before the launcher was added (or any earlier
+version), one `git pull` brings you forward:
+
+```bash
+cd /path/to/your/clone
+git pull origin main         # gets the launcher + control panel
+make install                 # one-time, if you want the global command
+iphonetexter                 # status panel shows the new version
+```
+
+After that, the **Update from origin** action inside the control panel handles
+every future update — `git pull`, conditional Swift rebuild, and pip refresh
+in one step. `start.sh` also prints a one-line `* N commit(s) behind origin`
+hint at launch when your local clone falls behind (cached state, no network
+call), so you'll see when updates are available.
+
 That single command bootstraps everything and drops you into an interactive
 control panel:
 
