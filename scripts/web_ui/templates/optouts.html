@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block title %}Opt-outs{% endblock %}
+{% block content %}
+<section class="card">
+  <h1>Opted-out contacts</h1>
+  <p class="muted">
+    Contacts here are skipped automatically on bulk and one-off sends.
+    The watcher flags contacts that reply with phrases like "stop",
+    "unsubscribe", "remove me". Drop a
+    <code>state/optout_phrases.txt</code> file (one phrase per line) to
+    override the defaults; restart the server to reload.
+  </p>
+
+  {% if error %}<p class="warn">{{ error }}</p>{% endif %}
+  {% if flash %}<p class="muted">{{ flash }}</p>{% endif %}
+
+  {% if not contacts %}
+    <p class="muted">Nobody opted out yet.</p>
+  {% else %}
+  <table class="progress">
+    <thead>
+      <tr><th>handle</th><th>name</th><th>kind</th><th>at</th><th>reason</th><th></th></tr>
+    </thead>
+    <tbody>
+      {% for c in contacts %}
+      <tr class="status-error">
+        <td><code>{{ c.normalized_handle }}</code></td>
+        <td>{{ c.display_name or "" }}</td>
+        <td>{{ c.kind }}</td>
+        <td class="muted">{{ c.opted_out_at or "" }}</td>
+        <td>{{ c.opted_out_reason or "" }}</td>
+        <td>
+          <form method="post" action="/contacts/{{ c.id }}/clear-optout" style="display:inline">
+            <button type="submit">Clear</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+
+  <h2>Recent opt-out events</h2>
+  {% if not recent_events %}
+    <p class="muted">No events recorded yet.</p>
+  {% else %}
+  <table class="progress">
+    <thead>
+      <tr><th>at</th><th>handle</th><th>matched</th></tr>
+    </thead>
+    <tbody>
+      {% for e in recent_events %}
+      <tr>
+        <td class="muted">{{ e.processed_at }}</td>
+        <td><code>{{ e.handle }}</code></td>
+        <td>{{ e.matched_phrase }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+</section>
+{% endblock %}

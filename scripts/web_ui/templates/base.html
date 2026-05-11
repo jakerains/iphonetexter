@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{% block title %}imsg{% endblock %} · imsg</title>
+    <link rel="stylesheet" href="/static/style.css" />
+    <script src="https://unpkg.com/htmx.org@1.9.12" defer></script>
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="brand"><a href="/">imsg</a></div>
+      <nav>
+        <a href="/">Compose</a>
+        <a href="/send">Send</a>
+        <a href="/chats">Chats</a>
+        <a href="/inbound">Inbound</a>
+        <a href="/lists">Lists</a>
+        <a href="/templates">Templates</a>
+        <a href="/optouts">Opt-outs</a>
+        <a href="/results">Results</a>
+      </nav>
+      {% if busy %}
+      <span class="busy-pill">job running</span>
+      {% endif %}
+    </header>
+    <main>
+      {% block content %}{% endblock %}
+    </main>
+    <footer class="warn">
+      Don't use Messages.app while a job is running — AppleScript sends race
+      against manual sends and Apple may flag the line.
+    </footer>
+  </body>
+</html>

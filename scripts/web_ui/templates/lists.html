@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block title %}Lists{% endblock %}
+{% block content %}
+<section class="card">
+  <h1>Contact lists</h1>
+  <p class="muted">
+    Named lists persist across runs and auto-skip opted-out contacts on
+    bulk send. Ad-hoc lists are created automatically when you upload a
+    CSV from the <a href="/">Compose</a> page.
+  </p>
+
+  {% if error %}<p class="warn">{{ error }}</p>{% endif %}
+  {% if flash %}<p class="muted">{{ flash }}</p>{% endif %}
+
+  <form method="post" action="/lists" class="template-create">
+    <h2>Create a named list</h2>
+    <label>
+      <span>Name</span>
+      <input name="name" required placeholder="Saturday-event group" />
+    </label>
+    <label>
+      <span>Notes (optional)</span>
+      <input name="notes" placeholder="who's on it, why, etc." />
+    </label>
+    <button type="submit">Create</button>
+  </form>
+
+  <h2>All lists</h2>
+  {% if not lists %}
+    <p class="muted">No lists yet.</p>
+  {% else %}
+  <table class="progress">
+    <thead>
+      <tr><th>name</th><th>kind</th><th>members</th><th>created</th><th></th></tr>
+    </thead>
+    <tbody>
+      {% for lst in lists %}
+      <tr>
+        <td><a href="/lists/{{ lst.id }}">{{ lst.name }}</a></td>
+        <td>{{ lst.kind }}</td>
+        <td>{{ lst.member_count }}</td>
+        <td class="muted">{{ lst.created_at }}</td>
+        <td>
+          <form method="post" action="/lists/{{ lst.id }}/delete"
+                onsubmit="return confirm('Delete list {{ lst.name }}?');"
+                style="display:inline">
+            <button type="submit" class="danger">Delete</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+</section>
+{% endblock %}

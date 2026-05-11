@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block title %}{{ list.name }}{% endblock %}
+{% block content %}
+<section class="card">
+  <h1>{{ list.name }} <span class="muted">· {{ list.kind }} · {{ list.member_count }} members</span></h1>
+  <p><a href="/lists">← all lists</a></p>
+  {% if list.notes %}<p class="muted">{{ list.notes }}</p>{% endif %}
+  {% if error %}<p class="warn">{{ error }}</p>{% endif %}
+  {% if flash %}<p class="muted">{{ flash }}</p>{% endif %}
+
+  <h2>Add members</h2>
+  <form method="post" action="/lists/{{ list.id }}/import" enctype="multipart/form-data">
+    <label>
+      <span>CSV with a `handle` column</span>
+      <input type="file" name="recipients" accept=".csv,text/csv" required />
+    </label>
+    <button type="submit">Import</button>
+  </form>
+
+  <h2>Members</h2>
+  {% if not members %}
+    <p class="muted">No members yet. Use the form above to import a CSV.</p>
+  {% else %}
+  <table class="progress">
+    <thead>
+      <tr><th>handle</th><th>name</th><th>kind</th><th>service</th><th>status</th><th></th></tr>
+    </thead>
+    <tbody>
+      {% for m in members %}
+      <tr class="{% if m.opted_out %}status-error{% endif %}">
+        <td><code>{{ m.normalized_handle }}</code></td>
+        <td>{{ m.display_name or "" }}</td>
+        <td>{{ m.kind }}</td>
+        <td>{{ m.last_known_service or "" }}</td>
+        <td>{% if m.opted_out %}opted-out{% else %}active{% endif %}</td>
+        <td>
+          <form method="post" action="/lists/{{ list.id }}/remove" style="display:inline">
+            <input type="hidden" name="contact_id" value="{{ m.id }}" />
+            <button type="submit" class="danger">Remove</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+
+  <h2>Send to this list</h2>
+  <p class="muted">
+    Use <a href="/?list_id={{ list.id }}">the Compose page</a> to start a bulk
+    job against this list. Opted-out members are filtered automatically.
+  </p>
+</section>
+{% endblock %}

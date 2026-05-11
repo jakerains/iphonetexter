@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+{% block title %}Results{% endblock %}
+{% block content %}
+{% if rows is none %}
+<section class="card">
+  <h1>Recent one-off sends</h1>
+  {% if not oneoffs %}
+  <p class="muted">No one-off sends yet. Try the <a href="/send">Send</a> page or click "reply →" on a chat.</p>
+  {% else %}
+  <table class="progress">
+    <thead>
+      <tr>
+        <th>ts</th>
+        <th>target</th>
+        <th>contact</th>
+        <th>service</th>
+        <th>status</th>
+        <th>guid / error</th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for r in oneoffs %}
+      <tr class="status-{{ r.status }}">
+        <td class="muted">{{ r.ts }}</td>
+        <td><code>{{ r.target }}</code></td>
+        <td>
+          {% if r.contact_display_name %}{{ r.contact_display_name }}<br/>{% endif %}
+          <code>{{ r.contact_handle or "" }}</code>
+        </td>
+        <td>{{ r.service or "" }} <span class="muted">({{ r.target_type }})</span></td>
+        <td>{{ r.status }}</td>
+        <td><code>{{ r.guid or r.error or "" }}</code></td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  <p class="muted">Last 50 entries from the <code>sends</code> table where <code>list_id IS NULL</code>.</p>
+  {% endif %}
+</section>
+
+<section class="card">
+  <h1>Bulk runs</h1>
+  {% if not jobs %}
+  <p class="muted">No bulk runs yet. Start one from the <a href="/">Compose</a> page.</p>
+  {% else %}
+  <table class="progress">
+    <thead>
+      <tr><th>started</th><th>list</th><th>total</th><th>ok</th><th>errors</th><th>job id</th></tr>
+    </thead>
+    <tbody>
+      {% for j in jobs %}
+      <tr>
+        <td class="muted">{{ j.started_at }}</td>
+        <td>
+          {% if j.list_name %}{{ j.list_name }} <span class="muted">({{ j.list_kind }})</span>{% else %}<span class="muted">(deleted)</span>{% endif %}
+        </td>
+        <td>{{ j.total }}</td>
+        <td>{{ j.ok_count }}</td>
+        <td>{{ j.error_count }}</td>
+        <td><a href="/results/job/{{ j.job_id }}"><code>{{ j.job_id }}</code></a></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+</section>
+
+{% else %}
+<section class="card">
+  <h1>Bulk run · <code>{{ selected }}</code></h1>
+  <p><a href="/results">← all results</a></p>
+  <table class="progress">
+    <thead>
+      <tr>
+        <th>ts</th><th>handle</th><th>contact</th><th>service</th>
+        <th>status</th><th>guid / error</th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for r in rows %}
+      <tr class="status-{{ r.status }}">
+        <td class="muted">{{ r.ts }}</td>
+        <td><code>{{ r.target }}</code></td>
+        <td>
+          {% if r.contact_display_name %}{{ r.contact_display_name }}<br/>{% endif %}
+          <code>{{ r.contact_handle or "" }}</code>
+        </td>
+        <td>{{ r.service or "" }}</td>
+        <td>{{ r.status }}</td>
+        <td><code>{{ r.guid or r.error or "" }}</code></td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endif %}
+{% endblock %}

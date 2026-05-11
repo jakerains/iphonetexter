@@ -15,6 +15,7 @@ struct CommandRouter {
       HistoryCommand.spec,
       WatchCommand.spec,
       SendCommand.spec,
+      NormalizeCommand.spec,
       ReactCommand.spec,
       ReadCommand.spec,
       TypingCommand.spec,

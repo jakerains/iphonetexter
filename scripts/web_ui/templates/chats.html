@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}Chats{% endblock %}
+{% block content %}
+<section class="card">
+  <h1>Recent chats</h1>
+  {% if error %}
+  <p class="warn">RPC error: {{ error }}</p>
+  {% endif %}
+  <table class="chats">
+    <thead>
+      <tr><th>id</th><th>name / identifier</th><th>service</th><th>last</th><th>group?</th><th></th></tr>
+    </thead>
+    <tbody>
+    {% for chat in chats %}
+      <tr class="{% if chat.identifier in opted_out %}status-error{% endif %}">
+        <td><a href="/chats/{{ chat.id }}">{{ chat.id }}</a></td>
+        <td>
+          <strong>{{ chat.name or chat.contact_name or chat.identifier }}</strong>
+          <div class="muted"><code>{{ chat.identifier }}</code>
+            {% if chat.identifier in opted_out %}<strong>· opted-out</strong>{% endif %}
+          </div>
+        </td>
+        <td>{{ chat.service }}</td>
+        <td class="muted">{{ chat.last_message_at }}</td>
+        <td>{{ "yes" if chat.is_group else "" }}</td>
+        <td><a class="reply" href="/send?chat_id={{ chat.id }}">reply →</a></td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endblock %}

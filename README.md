@@ -93,6 +93,14 @@ Send a standard tapback:
 imsg react --chat-id 42 --reaction like
 ```
 
+Normalize a handle to its canonical form (E.164 for phones, unchanged for
+emails). Use `--json` from scripts to also get a `valid` flag and `kind`:
+
+```bash
+imsg normalize --to "(415) 555-1212"
+imsg normalize --to "+1 650-253-0000" --json
+```
+
 Generate integration help:
 
 ```bash
@@ -107,6 +115,7 @@ imsg completions llm
 - `imsg history --chat-id <id> [--limit 50] [--attachments] [--convert-attachments] [--participants <handles>] [--start <iso>] [--end <iso>] [--json]`
 - `imsg watch [--chat-id <id>] [--since-rowid <id>] [--debounce <duration>] [--attachments] [--convert-attachments] [--reactions] [--participants <handles>] [--start <iso>] [--end <iso>] [--json]`
 - `imsg send (--to <handle-or-contact-name> | --chat-id <id> | --chat-identifier <id> | --chat-guid <guid>) [--text <text>] [--file <path>] [--service imessage|sms|auto] [--region US] [--json]`
+- `imsg normalize --to <handle> [--region US] [--json]`
 - `imsg react --chat-id <id> --reaction love|like|dislike|laugh|emphasis|question`
 - `imsg read --to <handle> [--chat-id <id> | --chat-identifier <id> | --chat-guid <guid>]`
 - `imsg typing --to <handle> [--duration 5s] [--stop true] [--service imessage|sms|auto]`
@@ -147,6 +156,38 @@ Routing fields such as `destination_caller_id`, `account_id`,
 `account_login`, and `last_addressed_handle` are read-only diagnostics from
 Messages. AppleScript does not expose a way for `imsg send` to force a specific
 outgoing Apple ID phone number or inline reply target.
+
+## Bulk Send
+
+Sending the same body to many recipients is supported through optional Python
+tooling under `scripts/`:
+
+- `scripts/bulk_send.py` — CLI driver. Reads a CSV with a `handle` column,
+  normalizes each handle, looks each one up against `chat.db` to bucket by
+  service, and paces iMessage and SMS sends separately. Persists to a
+  SQLite store at `<recipients dir>/imsg.db` (or `--db <path>`); resume
+  state lives in the `sends` table.
+- `scripts/web_ui/` — local FastAPI + HTMX web UI on `http://127.0.0.1:8765/`
+  that wraps the same engine with persistent contact lists, a one-off
+  send form, a chat browser with opt-out badges, an inbound feed, and
+  automatic opt-out detection (phrases like "stop", "unsubscribe" flip
+  the sender's contact to opted-out and skip future sends). See
+  `scripts/web_ui/README.md`.
+
+Both require Full Disk Access for `chat.db` reads and Automation permission
+for Messages.app — the same prereqs as `imsg send`. Identical-body bulk SMS
+through a personal line is rate-limited by carriers; default paces are 3-6s
+for iMessage and 15-30s for SMS / unknown buckets.
+
+```bash
+python scripts/bulk_send.py \
+  --recipients recipients.csv \
+  --message "see you Saturday at 6pm" \
+  --confirm
+```
+
+Without `--confirm` the run is dry-run only — it still does the pre-flight
+bucketing and prints the plan, but skips every `send` call.
 
 ## JSON-RPC
 

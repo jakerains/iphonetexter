@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+{% block title %}Send{% endblock %}
+{% block content %}
+<section class="card">
+  <h1>Send a one-off message</h1>
+  <p class="muted">
+    Sends through the same `imsg rpc` channel as the bulk job. The recipient
+    can be a phone number, email, contact name, or an existing chat id.
+    Disabled while a bulk job is running.
+  </p>
+
+  {% if busy %}
+  <p class="warn">A bulk job is running. One-offs are blocked until it finishes.</p>
+  {% endif %}
+
+  {% if error %}
+  <p class="warn">{{ error }}</p>
+  {% endif %}
+
+  {% if result %}
+  <div class="result">
+    <h2>Send accepted</h2>
+    <pre>{{ result | tojson(indent=2) }}</pre>
+    <p class="muted">
+      A `guid` field means the row was observed in chat.db. Without one,
+      Messages accepted the send but the row hadn't yet been written when
+      the verifier looked. Check
+      <a href="/chats">/chats</a> or the chat's history page to confirm.
+    </p>
+  </div>
+  {% endif %}
+
+  <form method="post" action="/send" enctype="multipart/form-data">
+    <fieldset class="confirm">
+      <legend>Target</legend>
+      <label class="checkbox">
+        <input type="radio" name="mode" value="handle" {% if mode != "chat" %}checked{% endif %} />
+        <span>Phone, email, or contact name</span>
+      </label>
+      <label>
+        <input name="to" value="{{ to or '' }}" placeholder="+14155551212 or jane@example.com or Jane Appleseed" />
+      </label>
+      <label class="checkbox">
+        <input type="radio" name="mode" value="chat" {% if mode == "chat" %}checked{% endif %} />
+        <span>Existing chat (by id)</span>
+      </label>
+      <label>
+        <input name="chat_id" type="number" min="1" value="{{ chat_id or '' }}" placeholder="42" />
+      </label>
+    </fieldset>
+
+    <label>
+      <span>Message</span>
+      <textarea id="message-body" name="text" rows="4" placeholder="hi">{{ text or '' }}</textarea>
+    </label>
+    <div class="template-picker">
+      <label>
+        <span>Load template</span>
+        <select id="template-picker">
+          <option value="">— choose a saved template —</option>
+          {% for tpl in templates %}
+          <option value="{{ tpl.id }}">{{ tpl.name }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <button type="button" id="save-template-btn">Save current body as template</button>
+      <span class="muted" id="template-status"></span>
+    </div>
+    <script id="template-data" type="application/json">{{ templates | tojson }}</script>
+    <script src="/static/templates-picker.js" defer></script>
+
+    <label>
+      <span>Attachment (optional, becomes MMS for SMS recipients)</span>
+      <input type="file" name="attachment" />
+    </label>
+
+    <div class="row">
+      <label>
+        <span>Service</span>
+        <select name="service">
+          <option value="auto" {% if service == "auto" %}selected{% endif %}>auto</option>
+          <option value="imessage" {% if service == "imessage" %}selected{% endif %}>imessage</option>
+          <option value="sms" {% if service == "sms" %}selected{% endif %}>sms</option>
+        </select>
+      </label>
+      <label>
+        <span>Region (phone normalization)</span>
+        <input name="region" value="{{ region or 'US' }}" />
+      </label>
+    </div>
+
+    {% if busy %}
+    <button type="submit" disabled>Send</button>
+    {% else %}
+    <button type="submit">Send</button>
+    {% endif %}
+  </form>
+</section>
+{% endblock %}

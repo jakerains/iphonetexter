@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block title %}Compose{% endblock %}
+{% block content %}
+<section class="card">
+  <h1>New bulk job</h1>
+  <p class="muted">
+    Upload a CSV with a <code>handle</code> column (any phone format or email).
+    The script normalizes each row, looks it up in <code>chat.db</code>, and
+    paces iMessage and SMS sends separately.
+  </p>
+  <form method="post" action="/jobs" enctype="multipart/form-data">
+    <fieldset class="confirm">
+      <legend>Recipients</legend>
+      <p class="muted">Pick a saved list <em>or</em> upload a CSV. The CSV path silently creates an ad-hoc list under the hood.</p>
+      <label>
+        <span>Existing list</span>
+        <select name="list_id">
+          <option value="">— none —</option>
+          {% for lst in lists %}
+          <option value="{{ lst.id }}">{{ lst.name }} ({{ lst.member_count }})</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>
+        <span>…or upload a CSV with a `handle` column</span>
+        <input type="file" name="recipients" accept=".csv,text/csv" />
+      </label>
+    </fieldset>
+    <label>
+      <span>Message body</span>
+      <textarea id="message-body" name="message" rows="5" placeholder="Same body sent to every recipient." required>{{ initial_body or '' }}</textarea>
+    </label>
+    <div class="template-picker">
+      <label>
+        <span>Load template</span>
+        <select id="template-picker">
+          <option value="">— choose a saved template —</option>
+          {% for tpl in templates %}
+          <option value="{{ tpl.id }}">{{ tpl.name }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <button type="button" id="save-template-btn">Save current body as template</button>
+      <span class="muted" id="template-status"></span>
+    </div>
+    <script id="template-data" type="application/json">{{ templates | tojson }}</script>
+    <script src="/static/templates-picker.js" defer></script>
+    <div class="row">
+      <label>
+        <span>iMessage pace (sec)</span>
+        <input name="imessage_pace" value="{{ defaults.imessage_pace }}" />
+      </label>
+      <label>
+        <span>SMS / unknown pace (sec)</span>
+        <input name="sms_pace" value="{{ defaults.sms_pace }}" />
+      </label>
+      <label>
+        <span>Failure ceiling</span>
+        <input name="failure_ceiling" type="number" min="1" value="{{ defaults.failure_ceiling }}" />
+      </label>
+    </div>
+    <fieldset class="confirm">
+      <label class="checkbox">
+        <input type="checkbox" name="confirm" value="1" />
+        <span>Send for real (uncheck for dry-run preview only)</span>
+      </label>
+    </fieldset>
+    {% if busy %}
+    <p class="warn">A job is already running — wait for it to finish before starting a new one.</p>
+    <button type="submit" disabled>Plan / send</button>
+    {% else %}
+    <button type="submit">Plan / send</button>
+    {% endif %}
+  </form>
+</section>
+{% endblock %}

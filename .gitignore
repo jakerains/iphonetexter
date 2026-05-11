@@ -42,3 +42,8 @@ bin/
 
 # Node.js / pnpm
 pnpm-lock.yaml
+
+# Python
+__pycache__/
+*.pyc
+*.pyo

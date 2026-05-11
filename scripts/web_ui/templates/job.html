@@ -1,0 +1,130 @@
+{% extends "base.html" %}
+{% block title %}Job {{ job_id }}{% endblock %}
+{% block content %}
+<section class="card">
+  <h1>Job {{ job_id }} <span class="muted">{{ "(dry-run)" if config.dry_run else "(live)" }}</span></h1>
+  <p class="muted">
+    Recipients: <code>{{ config.recipients_path }}</code> · Results:
+    <code>{{ config.results_path }}</code> · iMessage pace
+    {{ config.imessage_pace[0] }}–{{ config.imessage_pace[1] }}s · SMS pace
+    {{ config.sms_pace[0] }}–{{ config.sms_pace[1] }}s
+  </p>
+
+  <div id="plan-summary" class="summary">
+    <h2>Plan</h2>
+    <pre id="plan-pre" class="empty">waiting for plan…</pre>
+  </div>
+
+  <div class="progress-block">
+    <h2>Progress</h2>
+    <table class="progress">
+      <thead>
+        <tr><th>#</th><th>handle</th><th>bucket</th><th>service</th><th>status</th><th>guid / error</th></tr>
+      </thead>
+      <tbody id="rows"></tbody>
+    </table>
+    <p id="status-line" class="muted">connecting…</p>
+    <form method="post" action="/jobs/{{ job_id }}/cancel" hx-post="/jobs/{{ job_id }}/cancel" hx-swap="innerHTML" hx-target="#cancel-out">
+      <button type="submit">Cancel</button>
+      <span id="cancel-out"></span>
+    </form>
+  </div>
+</section>
+
+<script>
+  (function () {
+    const planPre = document.getElementById('plan-pre');
+    const tbody = document.getElementById('rows');
+    const status = document.getElementById('status-line');
+    const summary = {};
+    let row = 0;
+
+    function makeCell(text, opts) {
+      opts = opts || {};
+      const td = document.createElement('td');
+      if (opts.colspan) td.colSpan = opts.colspan;
+      if (opts.codeWrap) {
+        const code = document.createElement('code');
+        code.textContent = text == null ? '' : String(text);
+        td.appendChild(code);
+      } else {
+        td.textContent = text == null ? '' : String(text);
+      }
+      return td;
+    }
+
+    function appendRow(cells, className) {
+      const tr = document.createElement('tr');
+      if (className) tr.className = className;
+      cells.forEach((cell) => tr.appendChild(cell));
+      tbody.appendChild(tr);
+    }
+
+    const es = new EventSource("/jobs/{{ job_id }}/events");
+
+    es.onmessage = (event) => {
+      let payload;
+      try { payload = JSON.parse(event.data); } catch { return; }
+
+      if (payload.kind === 'plan') {
+        Object.assign(summary, payload);
+        planPre.classList.remove('empty');
+        planPre.textContent = JSON.stringify(summary, null, 2);
+        return;
+      }
+      if (payload.kind === 'send_start') {
+        status.textContent = 'sending → ' + (payload.normalized || '') +
+          ' (' + (payload.bucket || '') + ')';
+        return;
+      }
+      if (payload.kind === 'send_result') {
+        row += 1;
+        appendRow(
+          [
+            makeCell(row),
+            makeCell(payload.normalized, { codeWrap: true }),
+            makeCell(payload.bucket),
+            makeCell(payload.attempt_service),
+            makeCell(payload.status),
+            makeCell(payload.guid || payload.error || '', { codeWrap: true }),
+          ],
+          'status-' + (payload.status || 'unknown')
+        );
+        return;
+      }
+      if (payload.kind === 'skip') {
+        appendRow(
+          [
+            makeCell('—'),
+            makeCell(payload.normalized, { codeWrap: true }),
+            makeCell('skipped (already ok)', { colspan: 4 }),
+          ],
+          'status-skip'
+        );
+        return;
+      }
+      if (payload.kind === 'warn') {
+        status.textContent = 'warning: ' + JSON.stringify(payload);
+        return;
+      }
+      if (payload.kind === 'error') {
+        status.textContent = 'error: ' + JSON.stringify(payload);
+        return;
+      }
+      if (payload.kind === 'done') {
+        status.textContent = 'done (' + (payload.reason || 'complete') + ')';
+        return;
+      }
+      if (payload.kind === 'stream_end') {
+        const code = payload.exit_code == null ? '—' : payload.exit_code;
+        status.textContent = 'stream closed (exit ' + code + ')';
+        es.close();
+      }
+    };
+
+    es.onerror = () => {
+      status.textContent = 'connection lost';
+    };
+  })();
+</script>
+{% endblock %}

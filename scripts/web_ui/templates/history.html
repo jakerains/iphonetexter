@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}Chat {{ chat_id }}{% endblock %}
+{% block content %}
+<section class="card">
+  <h1>Chat {{ chat_id }} history</h1>
+  <p>
+    <a href="/chats">← back to chats</a>
+    · <a class="reply" href="/send?chat_id={{ chat_id }}">reply in this chat →</a>
+  </p>
+  {% if error %}
+  <p class="warn">RPC error: {{ error }}</p>
+  {% endif %}
+  <table class="messages">
+    <thead>
+      <tr><th>id</th><th>at</th><th>from</th><th>text</th></tr>
+    </thead>
+    <tbody>
+    {% for msg in messages %}
+      <tr class="{{ 'me' if msg.is_from_me else 'them' }}">
+        <td>{{ msg.id }}</td>
+        <td class="muted">{{ msg.created_at }}</td>
+        <td>{{ "me" if msg.is_from_me else (msg.sender_name or msg.sender) }}</td>
+        <td>{{ msg.text or "" }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endblock %}

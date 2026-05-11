@@ -46,6 +46,22 @@ Common send command:
 imsg send --to "+15551234567" --text "message" --service auto
 ```
 
+Normalize a free-form handle before lookup or send:
+
+```bash
+imsg normalize --to "(415) 555-1212" --json
+```
+
+## Bulk Send
+
+For same-body broadcasts to many recipients, use the Python wrapper instead of looping `imsg send`. It buckets recipients by service from `chat.db`, paces iMessage and SMS separately, and persists results to a SQLite store with resume support.
+
+```bash
+python scripts/bulk_send.py --recipients recipients.csv --message "text" --confirm
+```
+
+Without `--confirm` the run is a dry-run only. A localhost web UI at `scripts/web_ui/` adds persistent contact lists, an inbound watcher, automatic opt-out flagging on replies like "stop", and one-off send.
+
 ## Verification
 
 For repo edits:

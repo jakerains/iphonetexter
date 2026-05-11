@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}Inbound{% endblock %}
+{% block content %}
+<section class="card">
+  <h1>Recent inbound messages</h1>
+  <p class="muted">
+    Captured live by the watcher process. Reaction tapbacks are excluded.
+    A red row means the message triggered an opt-out flag on the sender.
+  </p>
+  {% if not messages %}
+    <p class="muted">Nothing yet. The watcher is running but no inbound messages have arrived since startup.</p>
+  {% else %}
+  <table class="progress">
+    <thead>
+      <tr>
+        <th>at</th>
+        <th>from</th>
+        <th>text</th>
+        <th>chat</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for m in messages %}
+      <tr class="{% if m.triggered_optout %}status-error{% endif %}">
+        <td class="muted">{{ m.received_at or m.ingested_at }}</td>
+        <td>
+          {% if m.contact_display_name %}{{ m.contact_display_name }}<br/>{% endif %}
+          <code>{{ m.sender_handle or "" }}</code>
+        </td>
+        <td>{{ m.text or "" }}</td>
+        <td>
+          {% if m.chat_id %}<a href="/chats/{{ m.chat_id }}">{{ m.chat_id }}</a>{% endif %}
+        </td>
+        <td>
+          {% if m.triggered_optout %}<strong>opt-out</strong>{% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+</section>
+{% endblock %}

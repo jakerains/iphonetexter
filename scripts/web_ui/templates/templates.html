@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block title %}Templates{% endblock %}
+{% block content %}
+<section class="card">
+  <h1>Saved templates</h1>
+  <p class="muted">
+    Reusable message bodies. Load one into the bulk
+    <a href="/">Compose</a> page or the one-off
+    <a href="/send">Send</a> page using the "templates" picker on either form.
+  </p>
+
+  {% if error %}<p class="warn">{{ error }}</p>{% endif %}
+  {% if flash %}<p class="muted">{{ flash }}</p>{% endif %}
+
+  <form method="post" action="/templates" class="template-create">
+    <h2>Save a new template</h2>
+    <label>
+      <span>Name</span>
+      <input name="name" required placeholder="Sale reminder" />
+    </label>
+    <label>
+      <span>Body</span>
+      <textarea name="body" rows="4" required placeholder="The message body…"></textarea>
+    </label>
+    <button type="submit">Save</button>
+  </form>
+
+  <h2>Saved</h2>
+  {% if not templates %}
+    <p class="muted">No templates yet. Use the form above or click "Save current body as template" on the compose / send pages.</p>
+  {% else %}
+  <ul class="templates">
+    {% for tpl in templates %}
+    <li class="template">
+      <details>
+        <summary>
+          <strong>{{ tpl.name }}</strong>
+          <span class="muted"> · updated {{ tpl.updated_at }}</span>
+        </summary>
+        <form method="post" action="/templates/{{ tpl.id }}" class="template-edit">
+          <label>
+            <span>Name</span>
+            <input name="name" value="{{ tpl.name }}" required />
+          </label>
+          <label>
+            <span>Body</span>
+            <textarea name="body" rows="4" required>{{ tpl.body }}</textarea>
+          </label>
+          <div class="template-actions">
+            <button type="submit">Update</button>
+            <a class="reply" href="/?template_id={{ tpl.id }}">use in bulk →</a>
+            <a class="reply" href="/send?template_id={{ tpl.id }}">use in one-off →</a>
+          </div>
+        </form>
+        <form method="post" action="/templates/{{ tpl.id }}/delete" class="template-delete"
+              onsubmit="return confirm('Delete template {{ tpl.name }}?');">
+          <button type="submit" class="danger">Delete</button>
+        </form>
+      </details>
+    </li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+</section>
+{% endblock %}
