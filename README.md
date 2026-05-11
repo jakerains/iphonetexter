@@ -18,6 +18,19 @@ sending one-offs, and running bulk jobs — clone the repo and run:
 ./start.sh
 ```
 
+To turn it into a global `iphonetexter` command (so you can launch from
+anywhere instead of `cd`'ing into the repo):
+
+```bash
+make install            # drops a wrapper in ~/.local/bin
+iphonetexter            # then launch from anywhere
+```
+
+(The wrapper is generated and points back at this clone. If you move the
+repo, run `make install` again from the new location. Override the install
+directory with `make install INSTALL_DIR=/usr/local/bin`. Remove with
+`make uninstall`.)
+
 That single command bootstraps everything and drops you into an interactive
 control panel:
 
