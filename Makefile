@@ -1,6 +1,6 @@
 SHELL := /bin/bash
 
-.PHONY: help format lint test build imsg clean build-dylib start install uninstall
+.PHONY: help format lint test build imsg clean build-dylib start install uninstall dock-app
 
 INSTALL_DIR ?= $(HOME)/.local/bin
 WRAPPER     := $(INSTALL_DIR)/iphonetexter
@@ -12,6 +12,7 @@ help:
 		"make install    - install the 'iphonetexter' command to $(INSTALL_DIR)" \
 		"                  (override with: make install INSTALL_DIR=/usr/local/bin)" \
 		"make uninstall  - remove the 'iphonetexter' command" \
+		"make dock-app   - build iPhoneTexter.app for the Dock (click = launch web UI)" \
 		"make format     - swift format in-place" \
 		"make lint       - swift format lint + swiftlint" \
 		"make test       - sync version, patch deps, run swift test" \
@@ -42,6 +43,9 @@ uninstall:
 	else \
 		printf "Not installed: %s\n" "$(WRAPPER)"; \
 	fi
+
+dock-app:
+	@scripts/install-dock-app.sh
 
 format:
 	swift format --in-place --recursive Sources Tests

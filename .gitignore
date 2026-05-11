@@ -51,3 +51,6 @@ __pycache__/
 
 # Launcher session logs
 .logs/
+
+# Generated Dock launcher (built by `make dock-app`)
+iPhoneTexter.app/

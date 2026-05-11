@@ -31,6 +31,25 @@ repo, run `make install` again from the new location. Override the install
 directory with `make install INSTALL_DIR=/usr/local/bin`. Remove with
 `make uninstall`.)
 
+### One-click Dock launcher
+
+Prefer clicking an icon over typing? Build a tiny `.app` you can drag into
+the Dock:
+
+```bash
+make dock-app           # writes iPhoneTexter.app into the repo root
+open iPhoneTexter.app   # optional: smoke-test it
+```
+
+Then open Finder, drag `iPhoneTexter.app` into your Dock (left of the
+divider, with your other apps), and clicking it will pop open Terminal and
+run `./start.sh start` — bootstrap, then straight to the web UI, no menu.
+
+The bundle is just an AppleScript that points back at this clone, so if
+you move the repo, re-run `make dock-app`. It's git-ignored. Pass
+`--menu` to `scripts/install-dock-app.sh` (or call the script directly) if
+you'd rather the click show the full control-panel menu.
+
 ### Upgrading an existing clone
 
 If you cloned this repo before the launcher was added (or any earlier
