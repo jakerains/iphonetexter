@@ -33,6 +33,10 @@ class Contact:
     opted_out_reason: Optional[str]
     created_at: str
     updated_at: str
+    notes: Optional[str] = None
+    # Populated only by list_all() — comma-joined names of the lists this
+    # contact belongs to. Not a persisted column.
+    list_names: Optional[str] = None
 
 
 @dataclass
@@ -96,6 +100,7 @@ class OptOutRow:
 
 
 def _row_to_contact(row: sqlite3.Row) -> Contact:
+    keys = row.keys()
     return Contact(
         id=row["id"],
         normalized_handle=row["normalized_handle"],
@@ -108,6 +113,8 @@ def _row_to_contact(row: sqlite3.Row) -> Contact:
         opted_out_reason=row["opted_out_reason"],
         created_at=row["created_at"],
         updated_at=row["updated_at"],
+        notes=row["notes"] if "notes" in keys else None,
+        list_names=row["list_names"] if "list_names" in keys else None,
     )
 
 
@@ -217,6 +224,142 @@ class Contacts:
                 "SELECT * FROM contacts WHERE opted_out = 1 ORDER BY opted_out_at DESC"
             ).fetchall()
         return [_row_to_contact(r) for r in rows]
+
+    @staticmethod
+    def _filter_clause(
+        search: Optional[str],
+        kind: Optional[str],
+        status: Optional[str],
+        list_id: Optional[int],
+    ) -> tuple[str, list]:
+        """Build a shared WHERE clause + params for list_all / count_all."""
+        clauses: list[str] = []
+        params: list = []
+        if search:
+            like = f"%{search.strip()}%"
+            clauses.append(
+                "(c.normalized_handle LIKE ? OR c.display_name LIKE ? OR c.notes LIKE ?)"
+            )
+            params += [like, like, like]
+        if kind:
+            clauses.append("c.kind = ?")
+            params.append(kind)
+        if status == "opted_out":
+            clauses.append("c.opted_out = 1")
+        elif status == "active":
+            clauses.append("c.opted_out = 0")
+        if list_id is not None:
+            clauses.append(
+                "c.id IN (SELECT contact_id FROM list_members WHERE list_id = ?)"
+            )
+            params.append(list_id)
+        where = (" WHERE " + " AND ".join(clauses)) if clauses else ""
+        return where, params
+
+    def count_all(
+        self,
+        *,
+        search: Optional[str] = None,
+        kind: Optional[str] = None,
+        status: Optional[str] = None,
+        list_id: Optional[int] = None,
+    ) -> int:
+        where, params = self._filter_clause(search, kind, status, list_id)
+        with self.db.connect() as conn:
+            row = conn.execute(
+                f"SELECT COUNT(*) AS n FROM contacts c{where}", params
+            ).fetchone()
+        return int(row["n"])
+
+    def list_all(
+        self,
+        *,
+        search: Optional[str] = None,
+        kind: Optional[str] = None,
+        status: Optional[str] = None,
+        list_id: Optional[int] = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> list[Contact]:
+        """Filtered, paginated contacts, each annotated with its list names."""
+        where, params = self._filter_clause(search, kind, status, list_id)
+        sql = f"""
+            SELECT c.*,
+                   (SELECT group_concat(l.name, ', ')
+                      FROM list_members lm
+                      JOIN lists l ON l.id = lm.list_id
+                     WHERE lm.contact_id = c.id) AS list_names
+              FROM contacts c{where}
+             ORDER BY (c.display_name IS NULL OR c.display_name = ''),
+                      c.display_name COLLATE NOCASE,
+                      c.normalized_handle
+             LIMIT ? OFFSET ?
+        """
+        with self.db.connect() as conn:
+            rows = conn.execute(sql, [*params, limit, offset]).fetchall()
+        return [_row_to_contact(r) for r in rows]
+
+    def bulk_mark_opted_out(self, contact_ids: Iterable[int], reason: Optional[str]) -> int:
+        now = _now()
+        changed = 0
+        with self.db.transaction() as conn:
+            for cid in contact_ids:
+                cur = conn.execute(
+                    """
+                    UPDATE contacts
+                       SET opted_out = 1, opted_out_at = ?, opted_out_reason = ?,
+                           updated_at = ?
+                     WHERE id = ? AND opted_out = 0
+                    """,
+                    (now, reason, now, cid),
+                )
+                changed += cur.rowcount
+        return changed
+
+    def bulk_clear_optout(self, contact_ids: Iterable[int]) -> int:
+        now = _now()
+        changed = 0
+        with self.db.transaction() as conn:
+            for cid in contact_ids:
+                cur = conn.execute(
+                    """
+                    UPDATE contacts
+                       SET opted_out = 0, opted_out_at = NULL, opted_out_reason = NULL,
+                           updated_at = ?
+                     WHERE id = ? AND opted_out = 1
+                    """,
+                    (now, cid),
+                )
+                changed += cur.rowcount
+        return changed
+
+    def update_details(
+        self,
+        contact_id: int,
+        *,
+        display_name: Optional[str] = None,
+        notes: Optional[str] = None,
+    ) -> None:
+        """Set name/notes (used by CSV enrichment and inline edits).
+
+        Only non-None arguments overwrite; pass "" to clear a field.
+        """
+        sets: list[str] = []
+        params: list = []
+        if display_name is not None:
+            sets.append("display_name = ?")
+            params.append(display_name or None)
+        if notes is not None:
+            sets.append("notes = ?")
+            params.append(notes or None)
+        if not sets:
+            return
+        sets.append("updated_at = ?")
+        params += [_now(), contact_id]
+        with self.db.transaction() as conn:
+            conn.execute(
+                f"UPDATE contacts SET {', '.join(sets)} WHERE id = ?", params
+            )
 
 
 class Lists:

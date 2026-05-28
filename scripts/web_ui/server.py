@@ -812,6 +812,261 @@ async def contact_clear_optout(request: Request, contact_id: int) -> RedirectRes
 
 
 # ---------------------------------------------------------------------------
+# Contacts table: browse / filter / bulk actions / CSV enrichment
+
+CONTACTS_PAGE_SIZE = 50
+
+_CSV_HANDLE_KEYS = {
+    "handle", "phone", "phone number", "phonenumber", "number", "mobile",
+    "cell", "cellphone", "telephone", "tel", "to", "msisdn",
+}
+_CSV_EMAIL_KEYS = {"email", "e-mail", "email address", "mail"}
+_CSV_NAME_KEYS = {
+    "name", "full name", "fullname", "display name", "display_name",
+    "displayname", "contact", "contact name",
+}
+_CSV_FIRST_KEYS = {"first name", "first", "firstname", "given name"}
+_CSV_LAST_KEYS = {"last name", "last", "lastname", "surname", "family name"}
+_CSV_NOTES_KEYS = {
+    "notes", "note", "info", "comment", "comments", "company", "organization",
+    "organisation", "org", "title", "address", "tag", "tags", "city", "state",
+    "country", "zip", "label",
+}
+_CSV_KNOWN_KEYS = (
+    _CSV_HANDLE_KEYS | _CSV_EMAIL_KEYS | _CSV_NAME_KEYS
+    | _CSV_FIRST_KEYS | _CSV_LAST_KEYS | _CSV_NOTES_KEYS
+)
+
+
+def _parse_contacts_csv(text: str) -> list[dict]:
+    """Parse a contacts CSV into [{handle, name, notes}].
+
+    Recognizes common column headers case-insensitively (phone/handle, name or
+    first/last, email, plus assorted info columns folded into notes). With no
+    recognizable header, treats column 1 as the handle and column 2 as a name.
+    """
+    reader = csv.reader(io.StringIO(text))
+    rows = [r for r in reader if any(c.strip() for c in r)]
+    if not rows:
+        return []
+    header = [c.strip() for c in rows[0]]
+    lowered = [c.lower() for c in header]
+    has_header = any(h in _CSV_KNOWN_KEYS for h in lowered)
+
+    if not has_header:
+        out = []
+        for r in rows:
+            handle = (r[0].strip() if r else "")
+            name = (r[1].strip() if len(r) > 1 else "")
+            if handle:
+                out.append({"handle": handle, "name": name, "notes": ""})
+        return out
+
+    handle_idx = email_idx = name_idx = first_idx = last_idx = None
+    notes_cols: list[tuple[str, int]] = []
+    for i, h in enumerate(lowered):
+        if h in _CSV_HANDLE_KEYS and handle_idx is None:
+            handle_idx = i
+        elif h in _CSV_EMAIL_KEYS and email_idx is None:
+            email_idx = i
+        elif h in _CSV_NAME_KEYS and name_idx is None:
+            name_idx = i
+        elif h in _CSV_FIRST_KEYS and first_idx is None:
+            first_idx = i
+        elif h in _CSV_LAST_KEYS and last_idx is None:
+            last_idx = i
+        elif h in _CSV_NOTES_KEYS:
+            notes_cols.append((header[i], i))
+
+    def cell(r: list[str], i: Optional[int]) -> str:
+        return r[i].strip() if (i is not None and i < len(r)) else ""
+
+    out = []
+    for r in rows[1:]:
+        handle = cell(r, handle_idx) or cell(r, email_idx)
+        if not handle:
+            continue
+        if name_idx is not None:
+            name = cell(r, name_idx)
+        else:
+            name = " ".join(p for p in (cell(r, first_idx), cell(r, last_idx)) if p)
+        notes = "; ".join(
+            f"{label}: {cell(r, i)}" for label, i in notes_cols if cell(r, i)
+        )
+        out.append({"handle": handle, "name": name, "notes": notes})
+    return out
+
+
+def _run_csv_import(repo: Repo, rows: list[dict], target_list_id: Optional[int], region: str) -> dict:
+    """Normalize + upsert + enrich each CSV row (blocking; run off the loop)."""
+    created = updated = invalid = 0
+    seen: set[int] = set()
+    member_ids: list[int] = []
+    for row in rows:
+        normalized, valid, kind = normalize_handle(IMSG_BIN, row["handle"], region)
+        if not valid:
+            invalid += 1
+            continue
+        before = repo.contacts.get_by_handle(normalized)
+        contact = repo.contacts.upsert(normalized_handle=normalized, kind=kind)
+        repo.contacts.update_details(
+            contact.id,
+            display_name=row["name"] or None,
+            notes=row["notes"] or None,
+        )
+        if contact.id not in seen:
+            seen.add(contact.id)
+            member_ids.append(contact.id)
+            if before is None:
+                created += 1
+            else:
+                updated += 1
+    added = 0
+    if target_list_id is not None and member_ids:
+        added = repo.lists.add_members(target_list_id, member_ids)
+    return {"created": created, "updated": updated, "invalid": invalid, "added": added}
+
+
+def _redirect_with(dest: str, *, flash: str = "", error: str = "") -> RedirectResponse:
+    parts = []
+    if flash:
+        parts.append(f"flash={_qs(flash)}")
+    if error:
+        parts.append(f"error={_qs(error)}")
+    if parts:
+        sep = "&" if "?" in dest else "?"
+        dest = dest + sep + "&".join(parts)
+    return RedirectResponse(url=dest, status_code=303)
+
+
+def _resolve_target_list(repo: Repo, list_id: str, new_list_name: str):
+    """Return (List|None, error). Prefers a new named list, else an existing id."""
+    name = new_list_name.strip()
+    if name:
+        try:
+            return repo.lists.create(name), None
+        except ValueError:
+            existing = next((lst for lst in repo.lists.all() if lst.name == name), None)
+            return existing, (None if existing else f"Could not create list {name!r}.")
+    if list_id.strip():
+        return repo.lists.get(int(list_id)), None
+    return None, None
+
+
+@app.get("/contacts", response_class=HTMLResponse)
+async def contacts_page(
+    request: Request,
+    q: str = "",
+    kind: str = "",
+    status: str = "",
+    list_id: str = "",
+    page: int = 1,
+    error: str = "",
+    flash: str = "",
+) -> HTMLResponse:
+    from urllib.parse import urlencode
+
+    repo: Repo = request.app.state.repo
+    lid = int(list_id) if list_id.strip().isdigit() else None
+    filters = dict(
+        search=q or None,
+        kind=kind or None,
+        status=status or None,
+        list_id=lid,
+    )
+    total = repo.contacts.count_all(**filters)
+    pages = max((total + CONTACTS_PAGE_SIZE - 1) // CONTACTS_PAGE_SIZE, 1)
+    page = min(max(page, 1), pages)
+    offset = (page - 1) * CONTACTS_PAGE_SIZE
+    contacts = repo.contacts.list_all(**filters, limit=CONTACTS_PAGE_SIZE, offset=offset)
+
+    filt = {k: v for k, v in (("q", q), ("kind", kind), ("status", status), ("list_id", list_id)) if v}
+    return render(
+        request,
+        "contacts.html",
+        contacts=contacts,
+        total=total,
+        page=page,
+        pages=pages,
+        start=(offset + 1) if total else 0,
+        end=min(offset + CONTACTS_PAGE_SIZE, total),
+        q=q,
+        kind=kind,
+        status=status,
+        sel_list_id=list_id,
+        lists=repo.lists.all(),
+        filter_qs=urlencode(filt),
+        error=error or None,
+        flash=flash or None,
+    )
+
+
+@app.post("/contacts/bulk")
+async def contacts_bulk(
+    request: Request,
+    action: str = Form(...),
+    contact_ids: list[int] = Form([]),
+    list_id: str = Form(""),
+    new_list_name: str = Form(""),
+    back: str = Form("/contacts"),
+) -> RedirectResponse:
+    repo: Repo = request.app.state.repo
+    dest = back or "/contacts"
+    if not contact_ids:
+        return _redirect_with(dest, error="No contacts selected.")
+
+    if action == "opt_out":
+        n = repo.contacts.bulk_mark_opted_out(contact_ids, "manual")
+        return _redirect_with(dest, flash=f"Opted out {n} contact(s).")
+    if action == "clear_optout":
+        n = repo.contacts.bulk_clear_optout(contact_ids)
+        return _redirect_with(dest, flash=f"Cleared opt-out on {n} contact(s).")
+    if action == "add_to_list":
+        target, err = _resolve_target_list(repo, list_id, new_list_name)
+        if err:
+            return _redirect_with(dest, error=err)
+        if target is None:
+            return _redirect_with(dest, error="Pick a list or enter a new list name.")
+        added = repo.lists.add_members(target.id, contact_ids)
+        already = len(contact_ids) - added
+        return _redirect_with(
+            dest, flash=f"Added {added} to {target.name} ({already} already there)."
+        )
+    return _redirect_with(dest, error=f"Unknown action: {action}")
+
+
+@app.post("/contacts/import-csv")
+async def contacts_import_csv(
+    request: Request,
+    file: UploadFile = Form(...),
+    list_id: str = Form(""),
+    new_list_name: str = Form(""),
+    region: str = Form("US"),
+) -> RedirectResponse:
+    repo: Repo = request.app.state.repo
+    raw = await file.read()
+    if not raw:
+        return _redirect_with("/contacts", error="Empty CSV.")
+    rows = _parse_contacts_csv(raw.decode("utf-8", errors="replace"))
+    if not rows:
+        return _redirect_with("/contacts", error="No usable rows found in CSV.")
+
+    target, err = _resolve_target_list(repo, list_id, new_list_name)
+    if err:
+        return _redirect_with("/contacts", error=err)
+
+    summary = await asyncio.to_thread(
+        _run_csv_import, repo, rows, target.id if target else None, region or "US"
+    )
+    note = f" Added {summary['added']} to {target.name}." if target else ""
+    flash = (
+        f"Imported {len(rows)} row(s): {summary['created']} new, "
+        f"{summary['updated']} updated, {summary['invalid']} invalid.{note}"
+    )
+    return _redirect_with("/contacts", flash=flash)
+
+
+# ---------------------------------------------------------------------------
 # Inbound
 
 @app.get("/inbound", response_class=HTMLResponse)

@@ -14,6 +14,7 @@ CREATE TABLE IF NOT EXISTS contacts (
     opted_out           INTEGER NOT NULL DEFAULT 0,
     opted_out_at        TEXT,
     opted_out_reason    TEXT,
+    notes               TEXT,
     created_at          TEXT NOT NULL,
     updated_at          TEXT NOT NULL
 );

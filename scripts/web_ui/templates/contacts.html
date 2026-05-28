@@ -1,0 +1,141 @@
+{% extends "base.html" %}
+{% block title %}Contacts{% endblock %}
+{% block content %}
+<section class="card">
+  <h1>Contacts <span class="muted">· {{ total }} total</span></h1>
+  <p class="muted">
+    Every phone/email handle the app knows. Search, filter, select rows to
+    add them to a list or opt them out. Opted-out contacts are skipped on
+    every send.
+  </p>
+
+  {% if error %}<p class="warn">{{ error }}</p>{% endif %}
+  {% if flash %}<p class="muted">{{ flash }}</p>{% endif %}
+
+  <!-- Filter / search -->
+  <form method="get" action="/contacts" class="row" style="grid-template-columns: 2fr 1fr 1fr 1fr auto;">
+    <label><span>Search name / handle / notes</span>
+      <input type="text" name="q" value="{{ q }}" placeholder="jane, +1512…, acme" />
+    </label>
+    <label><span>Kind</span>
+      <select name="kind">
+        <option value="" {% if not kind %}selected{% endif %}>any</option>
+        <option value="phone" {% if kind == 'phone' %}selected{% endif %}>phone</option>
+        <option value="email" {% if kind == 'email' %}selected{% endif %}>email</option>
+        <option value="unknown" {% if kind == 'unknown' %}selected{% endif %}>unknown</option>
+      </select>
+    </label>
+    <label><span>Status</span>
+      <select name="status">
+        <option value="" {% if not status %}selected{% endif %}>all</option>
+        <option value="active" {% if status == 'active' %}selected{% endif %}>active</option>
+        <option value="opted_out" {% if status == 'opted_out' %}selected{% endif %}>opted-out</option>
+      </select>
+    </label>
+    <label><span>In list</span>
+      <select name="list_id">
+        <option value="" {% if not sel_list_id %}selected{% endif %}>any</option>
+        {% for lst in lists %}
+        <option value="{{ lst.id }}" {% if sel_list_id == lst.id|string %}selected{% endif %}>{{ lst.name }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label><span>&nbsp;</span>
+      <button type="submit">Filter</button>
+    </label>
+  </form>
+  {% if q or kind or status or sel_list_id %}
+  <p><a href="/contacts">clear filters</a></p>
+  {% endif %}
+</section>
+
+<!-- CSV import / enrichment -->
+<section class="card">
+  <h2>Import / enrich from CSV</h2>
+  <p class="muted">
+    Upload a CSV to add contacts or fill in names and info. Columns are
+    matched by header (case-insensitive): a phone/handle or email column, a
+    <code>name</code> column (or <code>first name</code>/<code>last name</code>),
+    and any of notes/company/title/address/tags are folded into notes.
+    Matching is by normalized handle, so existing contacts are enriched, not
+    duplicated.
+  </p>
+  <form method="post" action="/contacts/import-csv" enctype="multipart/form-data"
+        class="row" style="grid-template-columns: 2fr 1fr 1fr auto;"
+        onsubmit="this.querySelector('button').disabled=true;this.querySelector('button').textContent='Importing…';">
+    <label><span>CSV file</span>
+      <input type="file" name="file" accept=".csv,text/csv" required />
+    </label>
+    <label><span>Add all to existing list</span>
+      <select name="list_id">
+        <option value="">— none —</option>
+        {% for lst in lists %}
+        <option value="{{ lst.id }}">{{ lst.name }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label><span>…or new list named</span>
+      <input type="text" name="new_list_name" placeholder="optional" />
+    </label>
+    <label><span>&nbsp;</span>
+      <button type="submit">Import CSV</button>
+    </label>
+  </form>
+</section>
+
+<!-- Table + bulk actions -->
+<section class="card">
+  {% if not contacts %}
+    <p class="muted">No contacts match. {% if q or kind or status or sel_list_id %}<a href="/contacts">Clear filters</a>.{% endif %}</p>
+  {% else %}
+  <form method="post" action="/contacts/bulk">
+    <input type="hidden" name="back" value="/contacts{% if filter_qs %}?{{ filter_qs }}&page={{ page }}{% else %}?page={{ page }}{% endif %}" />
+
+    <div class="confirm" style="display:flex;gap:0.75rem;align-items:center;flex-wrap:wrap;">
+      <strong>With selected:</strong>
+      <select name="list_id">
+        <option value="">existing list…</option>
+        {% for lst in lists %}
+        <option value="{{ lst.id }}">{{ lst.name }}</option>
+        {% endfor %}
+      </select>
+      <input type="text" name="new_list_name" placeholder="or new list name" style="width:auto;" />
+      <button type="submit" name="action" value="add_to_list">Add to list</button>
+      <button type="submit" name="action" value="opt_out" class="danger">Opt out</button>
+      <button type="submit" name="action" value="clear_optout">Clear opt-out</button>
+    </div>
+
+    <table class="progress">
+      <thead>
+        <tr>
+          <th><input type="checkbox" onclick="for(const b of this.closest('table').querySelectorAll('input[name=contact_ids]'))b.checked=this.checked" title="select all on this page" /></th>
+          <th>name</th><th>handle</th><th>kind</th><th>status</th><th>lists</th><th>notes</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for c in contacts %}
+        <tr class="{% if c.opted_out %}status-error{% endif %}">
+          <td><input type="checkbox" name="contact_ids" value="{{ c.id }}" /></td>
+          <td>{{ c.display_name or "" }}</td>
+          <td><code>{{ c.normalized_handle }}</code></td>
+          <td>{{ c.kind }}</td>
+          <td>{% if c.opted_out %}opted-out{% else %}active{% endif %}</td>
+          <td class="muted">{{ c.list_names or "" }}</td>
+          <td class="muted">{{ c.notes or "" }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </form>
+
+  <p class="muted" style="display:flex;justify-content:space-between;align-items:center;">
+    <span>Showing {{ start }}–{{ end }} of {{ total }}</span>
+    <span>
+      {% if page > 1 %}<a href="/contacts?{% if filter_qs %}{{ filter_qs }}&{% endif %}page={{ page - 1 }}">← prev</a>{% endif %}
+      <span style="margin:0 0.5rem;">page {{ page }} / {{ pages }}</span>
+      {% if page < pages %}<a href="/contacts?{% if filter_qs %}{{ filter_qs }}&{% endif %}page={{ page + 1 }}">next →</a>{% endif %}
+    </span>
+  </p>
+  {% endif %}
+</section>
+{% endblock %}

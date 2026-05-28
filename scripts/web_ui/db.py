@@ -18,7 +18,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Iterator
 
-CURRENT_VERSION = 1
+CURRENT_VERSION = 2
 SCHEMA_PATH = Path(__file__).resolve().parent / "schema.sql"
 
 
@@ -54,7 +54,13 @@ class Database:
     def _migrate(self, conn: sqlite3.Connection) -> None:
         row = conn.execute("SELECT version FROM schema_meta").fetchone()
         version = row["version"] if row else 0
-        # No migrations defined yet — schema_meta tracks future bumps.
+
+        # v2: free-text `notes` on contacts (for CSV-imported names/info).
+        if version < 2:
+            cols = {r["name"] for r in conn.execute("PRAGMA table_info(contacts)")}
+            if "notes" not in cols:
+                conn.execute("ALTER TABLE contacts ADD COLUMN notes TEXT")
+
         if version != CURRENT_VERSION:
             conn.execute("UPDATE schema_meta SET version = ?", (CURRENT_VERSION,))
 
