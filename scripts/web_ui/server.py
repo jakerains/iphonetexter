@@ -55,6 +55,7 @@ from bulk_send import (  # noqa: E402
 from db import Database  # noqa: E402
 from import_from_messages import import_contacts  # noqa: E402
 from optout import load_matcher  # noqa: E402
+from scan_optouts import scan_history  # noqa: E402
 from repository import Repo  # noqa: E402
 from templates_store import TemplateStore, TemplateStoreError  # noqa: E402
 from watcher import InboundWatcher  # noqa: E402
@@ -637,16 +638,50 @@ async def list_create(
     return RedirectResponse(url=f"/lists/{lst.id}", status_code=303)
 
 
+def _scan_optouts_blocking(repo: Repo, matcher) -> dict:
+    """Run the historical opt-out scan via a short-lived `imsg rpc` subprocess.
+
+    Spawns its own RpcClient (rather than reusing the app's async client) so it
+    is safe to call from a worker thread without touching the event loop.
+    """
+    with RpcClient(IMSG_BIN) as rpc:
+        return scan_history(rpc.call, repo, matcher, region="US")
+
+
 @app.post("/contacts/import-messages")
 async def contacts_import_messages(request: Request) -> RedirectResponse:
     repo: Repo = request.app.state.repo
+    matcher = request.app.state.matcher
     try:
         summary = await asyncio.to_thread(import_contacts, repo, "US")
     except SystemExit as err:  # raised by fetch_handles when chat.db is missing
         return RedirectResponse(url=f"/lists?error={_qs(str(err))}", status_code=303)
+    # Honor anyone who already replied STOP/cancel/etc. in your history.
+    try:
+        scan = await asyncio.to_thread(_scan_optouts_blocking, repo, matcher)
+        opt_note = f" Flagged {scan['flagged']} opt-out(s) from past replies."
+    except Exception as err:  # noqa: BLE001 — import succeeded; scan is best-effort
+        opt_note = f" (Opt-out scan failed: {err})"
     flash = (
         f"Imported {summary['created']} new contacts from Messages "
         f"({summary['updated']} already existed, {summary['found']} handles scanned)."
+        + opt_note
+    )
+    return RedirectResponse(url=f"/lists?flash={_qs(flash)}", status_code=303)
+
+
+@app.post("/contacts/scan-optouts")
+async def contacts_scan_optouts(request: Request) -> RedirectResponse:
+    repo: Repo = request.app.state.repo
+    matcher = request.app.state.matcher
+    try:
+        scan = await asyncio.to_thread(_scan_optouts_blocking, repo, matcher)
+    except Exception as err:  # noqa: BLE001
+        return RedirectResponse(url=f"/lists?error={_qs(f'Opt-out scan failed: {err}')}", status_code=303)
+    flash = (
+        f"Scanned {scan['messages_scanned']} inbound messages across "
+        f"{scan['chats_scanned']} chats. Flagged {scan['flagged']} new opt-out(s) "
+        f"({scan['already_flagged']} already flagged)."
     )
     return RedirectResponse(url=f"/lists?flash={_qs(flash)}", status_code=303)
 

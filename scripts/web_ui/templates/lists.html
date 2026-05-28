@@ -18,9 +18,24 @@
     <h2>Import from Messages</h2>
     <p class="muted">
       Pull every phone number and email from your macOS Messages history
-      into contacts. Safe to re-run — existing contacts are left untouched.
+      into contacts, then scan past replies and flag anyone who said
+      STOP / cancel / unsubscribe. Safe to re-run — existing contacts and
+      flags are left untouched.
     </p>
     <button type="submit">Import from Messages</button>
+  </form>
+
+  <form method="post" action="/contacts/scan-optouts"
+        onsubmit="this.querySelector('button').disabled=true;
+                  this.querySelector('button').textContent='Scanning…';">
+    <h2>Scan for opt-outs</h2>
+    <p class="muted">
+      Re-scan your Messages history for opt-out replies (STOP, cancel,
+      unsubscribe, "remove me", etc.) and flag those contacts so bulk
+      sends skip them. Runs automatically on import; use this to re-check
+      later. Manage flagged contacts on the <a href="/optouts">Opt-outs</a> page.
+    </p>
+    <button type="submit">Scan for opt-outs</button>
   </form>
 
   <form method="post" action="/lists" class="template-create">
