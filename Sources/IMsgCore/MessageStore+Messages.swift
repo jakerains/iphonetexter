@@ -205,7 +205,12 @@ private struct LatestSentMessageQuery {
   let selection: MessageRowSelection
   let fallbackChatID: Int64?
 
-  init(store: MessageStore, text: String, chatID: ChatID?, since date: Date) {
+  // Select recent outgoing candidates by date/chat only — NOT by the `text`
+  // column. Modern macOS often stores the outgoing body in `attributedBody`
+  // and leaves `text` NULL, so a SQL `text` comparison would miss those rows
+  // and the send would be reported `ok_unverified` despite delivering. The
+  // caller compares the *decoded* text (which falls back to attributedBody).
+  init(store: MessageStore, chatID: ChatID?, since date: Date, candidateLimit: Int = 50) {
     self.selection = MessageRowSelection(store: store, includeChatID: true)
     var sql = """
       SELECT \(selection.selectList)
@@ -213,15 +218,14 @@ private struct LatestSentMessageQuery {
       LEFT JOIN chat_message_join cmj ON m.ROWID = cmj.message_id
       LEFT JOIN handle h ON m.handle_id = h.ROWID
       WHERE m.is_from_me = 1
-        AND IFNULL(m.text, '') = ?
         AND m.date >= ?
       """
-    var bindings: [Binding?] = [text, MessageStore.appleEpoch(date)]
+    var bindings: [Binding?] = [MessageStore.appleEpoch(date)]
     if let chatID {
       sql += " AND cmj.chat_id = ?"
       bindings.append(chatID.rawValue)
     }
-    sql += " ORDER BY m.date DESC, m.ROWID DESC LIMIT 1"
+    sql += " ORDER BY m.date DESC, m.ROWID DESC LIMIT \(max(candidateLimit, 1))"
 
     self.sql = sql
     self.bindings = bindings
@@ -383,42 +387,46 @@ extension MessageStore {
 
     let query = LatestSentMessageQuery(
       store: self,
-      text: text,
       chatID: chatID.map { ChatID(rawValue: $0) },
       since: date
     )
 
     return try withConnection { db in
       let rows = try db.prepareRowIterator(query.sql, bindings: query.bindings)
-      guard let row = try rows.failableNext() else { return nil }
-      let decoded = try decodeMessageRow(
-        row,
-        columns: query.selection.columns,
-        fallbackChatID: query.fallbackChatID
-      )
-      let replyToGUID = replyToGUID(
-        associatedGuid: decoded.associatedGUID,
-        associatedType: decoded.associatedType
-      )
-      return Message(
-        rowID: decoded.rowID,
-        chatID: decoded.chatID,
-        sender: decoded.sender,
-        text: decoded.text,
-        date: decoded.date,
-        isFromMe: decoded.isFromMe,
-        service: decoded.service,
-        handleID: decoded.handleID,
-        attachmentsCount: decoded.attachments,
-        guid: decoded.guid,
-        routing: Message.RoutingMetadata(
-          replyToGUID: replyToGUID,
-          threadOriginatorGUID: decoded.threadOriginatorGUID.isEmpty
-            ? nil : decoded.threadOriginatorGUID,
-          destinationCallerID: decoded.destinationCallerID.isEmpty
-            ? nil : decoded.destinationCallerID
+      while let row = try rows.failableNext() {
+        let decoded = try decodeMessageRow(
+          row,
+          columns: query.selection.columns,
+          fallbackChatID: query.fallbackChatID
         )
-      )
+        // Compare the decoded text (which falls back to attributedBody) rather
+        // than the raw `text` column, which is frequently NULL on modern macOS.
+        guard decoded.text == text else { continue }
+        let replyToGUID = replyToGUID(
+          associatedGuid: decoded.associatedGUID,
+          associatedType: decoded.associatedType
+        )
+        return Message(
+          rowID: decoded.rowID,
+          chatID: decoded.chatID,
+          sender: decoded.sender,
+          text: decoded.text,
+          date: decoded.date,
+          isFromMe: decoded.isFromMe,
+          service: decoded.service,
+          handleID: decoded.handleID,
+          attachmentsCount: decoded.attachments,
+          guid: decoded.guid,
+          routing: Message.RoutingMetadata(
+            replyToGUID: replyToGUID,
+            threadOriginatorGUID: decoded.threadOriginatorGUID.isEmpty
+              ? nil : decoded.threadOriginatorGUID,
+            destinationCallerID: decoded.destinationCallerID.isEmpty
+              ? nil : decoded.destinationCallerID
+          )
+        )
+      }
+      return nil
     }
   }
 

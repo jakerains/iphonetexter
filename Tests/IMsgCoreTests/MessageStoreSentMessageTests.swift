@@ -93,6 +93,79 @@ func latestSentMessageFallsBackToNewestOutgoingTextWithoutChatFilter() throws {
 }
 
 @Test
+func latestSentMessageMatchesAttributedBodyWhenTextColumnIsNull() throws {
+  // Reproduces the `ok_unverified` bug: a delivered outgoing message whose
+  // body lives in `attributedBody` with a NULL `text` column must still be
+  // matched by its decoded text.
+  let db = try Connection(.inMemory)
+  try db.execute(
+    """
+    CREATE TABLE message (
+      ROWID INTEGER PRIMARY KEY,
+      handle_id INTEGER,
+      text TEXT,
+      attributedBody BLOB,
+      guid TEXT,
+      associated_message_guid TEXT,
+      associated_message_type INTEGER,
+      date INTEGER,
+      is_from_me INTEGER,
+      service TEXT
+    );
+    """
+  )
+  try db.execute(
+    """
+    CREATE TABLE chat (
+      ROWID INTEGER PRIMARY KEY,
+      chat_identifier TEXT,
+      guid TEXT,
+      display_name TEXT,
+      service_name TEXT
+    );
+    """
+  )
+  try db.execute("CREATE TABLE handle (ROWID INTEGER PRIMARY KEY, id TEXT);")
+  try db.execute("CREATE TABLE chat_message_join (chat_id INTEGER, message_id INTEGER);")
+  try db.execute(
+    "CREATE TABLE message_attachment_join (message_id INTEGER, attachment_id INTEGER);")
+  try db.run(
+    """
+    INSERT INTO chat(ROWID, chat_identifier, guid, display_name, service_name)
+    VALUES (1, '+17122230473', 'iMessage;-;+17122230473', 'Test', 'iMessage')
+    """
+  )
+  try db.run("INSERT INTO handle(ROWID, id) VALUES (1, '+17122230473')")
+
+  let now = Date()
+  let bodyBytes = [UInt8(0x01), UInt8(0x2b)] + Array("hello there".utf8) + [0x86, 0x84]
+  let body = Blob(bytes: bodyBytes)
+  try db.run(
+    """
+    INSERT INTO message(
+      ROWID, handle_id, text, attributedBody, guid,
+      associated_message_guid, associated_message_type, date, is_from_me, service
+    )
+    VALUES (1, 1, NULL, ?, 'attr-guid', NULL, 0, ?, 1, 'iMessage')
+    """,
+    body,
+    TestDatabase.appleEpoch(now)
+  )
+  try db.run("INSERT INTO chat_message_join(chat_id, message_id) VALUES (1, 1)")
+  let store = try MessageStore(connection: db, path: ":memory:")
+
+  let message = try store.latestSentMessage(
+    matchingText: "hello there",
+    chatID: 1,
+    since: now.addingTimeInterval(-2)
+  )
+
+  #expect(message?.rowID == 1)
+  #expect(message?.guid == "attr-guid")
+  #expect(message?.text == "hello there")
+}
+
+@Test
 func chatInfoMatchingTargetHandlesAnyGroupPolarityMismatch() throws {
   let db = try makeSentMessageDatabase()
   try db.run(
