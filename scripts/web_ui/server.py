@@ -53,6 +53,7 @@ from bulk_send import (  # noqa: E402
     run_job,
 )
 from db import Database  # noqa: E402
+from import_from_messages import import_contacts  # noqa: E402
 from optout import load_matcher  # noqa: E402
 from repository import Repo  # noqa: E402
 from templates_store import TemplateStore, TemplateStoreError  # noqa: E402
@@ -634,6 +635,20 @@ async def list_create(
     except ValueError as err:
         return RedirectResponse(url=f"/lists?error={_qs(str(err))}", status_code=303)
     return RedirectResponse(url=f"/lists/{lst.id}", status_code=303)
+
+
+@app.post("/contacts/import-messages")
+async def contacts_import_messages(request: Request) -> RedirectResponse:
+    repo: Repo = request.app.state.repo
+    try:
+        summary = await asyncio.to_thread(import_contacts, repo, "US")
+    except SystemExit as err:  # raised by fetch_handles when chat.db is missing
+        return RedirectResponse(url=f"/lists?error={_qs(str(err))}", status_code=303)
+    flash = (
+        f"Imported {summary['created']} new contacts from Messages "
+        f"({summary['updated']} already existed, {summary['found']} handles scanned)."
+    )
+    return RedirectResponse(url=f"/lists?flash={_qs(flash)}", status_code=303)
 
 
 @app.get("/lists/{list_id}", response_class=HTMLResponse)
