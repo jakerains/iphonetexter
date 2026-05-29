@@ -143,12 +143,13 @@ public struct MessageSender {
           tell application "Messages"
               if useChat is "1" then
                   set targetChat to chat id chatId
-                  if theMessage is not "" then
-                      send theMessage to targetChat
-                  end if
+                  -- Send the attachment first so the image lands above the text.
                   if useAttachment is "1" then
                       set theFile to POSIX file theFilePath as alias
                       send theFile to targetChat
+                  end if
+                  if theMessage is not "" then
+                      send theMessage to targetChat
                   end if
               else
                   if theService is "sms" then
@@ -158,12 +159,13 @@ public struct MessageSender {
                   end if
 
                   set targetBuddy to buddy theRecipient of targetService
-                  if theMessage is not "" then
-                      send theMessage to targetBuddy
-                  end if
+                  -- Send the attachment first so the image lands above the text.
                   if useAttachment is "1" then
                       set theFile to POSIX file theFilePath as alias
                       send theFile to targetBuddy
+                  end if
+                  if theMessage is not "" then
+                      send theMessage to targetBuddy
                   end if
               end if
           end tell
