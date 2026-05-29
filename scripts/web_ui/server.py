@@ -65,6 +65,7 @@ STATE_DIR = BASE_DIR / "state"
 JOBS_DIR = STATE_DIR / "jobs"
 DB_PATH = STATE_DIR / "imsg.db"
 OPTOUT_PHRASES_PATH = STATE_DIR / "optout_phrases.txt"
+OPTOUT_FINGERPRINT_PATH = STATE_DIR / "optout_fingerprint.txt"
 TEMPLATES = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 IMSG_BIN = os.environ.get("IMSG_BIN", "imsg")
 HOST = os.environ.get("IMSG_WEB_HOST", "127.0.0.1")
@@ -233,6 +234,33 @@ class JobManager:
         record.queue.put_nowait(payload)
 
 
+async def _rescan_optouts_if_rules_changed(repo: Repo, matcher) -> None:
+    """When the opt-out phrase set changes, re-scan history once to back-fill.
+
+    Fingerprint of the active phrases is persisted; if it differs from last
+    run we re-evaluate every past message against the new rules. Runs in the
+    background so it never blocks startup, and only writes the new fingerprint
+    on success so a failed scan retries next boot.
+    """
+    fingerprint = matcher.fingerprint()
+    try:
+        previous = OPTOUT_FINGERPRINT_PATH.read_text(encoding="utf-8").strip()
+    except OSError:
+        previous = ""
+    if previous == fingerprint:
+        return
+    try:
+        summary = await asyncio.to_thread(_scan_optouts_blocking, repo, matcher)
+        OPTOUT_FINGERPRINT_PATH.write_text(fingerprint, encoding="utf-8")
+        print(
+            f"opt-out rules changed — re-scanned history, flagged "
+            f"{summary['flagged']} new ({summary['already_flagged']} already).",
+            flush=True,
+        )
+    except Exception as err:  # noqa: BLE001 — best-effort; retried next boot
+        print(f"opt-out re-scan skipped: {err}", flush=True)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     JOBS_DIR.mkdir(parents=True, exist_ok=True)
@@ -258,6 +286,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.watcher = watcher
 
     await watcher.start()
+    # If the opt-out rules changed since last boot, back-fill history in the
+    # background. Kept on app.state so the task isn't garbage-collected.
+    app.state.rescan_task = asyncio.create_task(
+        _rescan_optouts_if_rules_changed(repo, matcher)
+    )
     try:
         yield
     finally:

@@ -17,6 +17,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 from pathlib import Path
 from typing import Callable, Optional
@@ -112,10 +113,12 @@ def main() -> None:
     # Standalone: spawn our own short-lived `imsg rpc` subprocess.
     from bulk_send import RpcClient  # noqa: E402
 
+    binary = os.environ.get("IMSG_BIN", "imsg")
+
     repo = Repo(Database(DB_PATH))
     matcher = load_matcher(OPTOUT_PHRASES_PATH)
 
-    with RpcClient() as rpc:
+    with RpcClient(binary) as rpc:
         summary = scan_history(
             rpc.call,
             repo,
