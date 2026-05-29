@@ -28,7 +28,11 @@
     </fieldset>
     <label>
       <span>Message body</span>
-      <textarea id="message-body" name="message" rows="5" placeholder="Same body sent to every recipient." required>{{ initial_body or '' }}</textarea>
+      <textarea id="message-body" name="message" rows="5" placeholder="Same body sent to every recipient.">{{ initial_body or '' }}</textarea>
+    </label>
+    <label>
+      <span>Attachment (optional) — GIF, image, or any file sent to every recipient</span>
+      <input type="file" name="attachment" accept="image/gif,image/*,video/*" />
     </label>
     <div class="template-picker">
       <label>

@@ -55,6 +55,7 @@ class JobConfig:
     region: str = "US"
     imsg_binary: str = "imsg"
     chat_limit: int = DEFAULT_CHAT_LIMIT
+    attachment_path: Optional[Path] = None
 
 
 @dataclass
@@ -330,6 +331,7 @@ def send_one(
     message: str,
     service: str,
     region: str,
+    attachment: Optional[str] = None,
 ) -> dict:
     params = {
         "to": recipient.normalized,
@@ -337,6 +339,8 @@ def send_one(
         "service": service,
         "region": region,
     }
+    if attachment:
+        params["file"] = attachment
     return rpc.call("send", params)
 
 
@@ -429,7 +433,10 @@ def run_job(
 
             row = _row_for(recipient, attempt_service=attempt_service, message=config.message)
             try:
-                result = send_one(rpc, recipient, config.message, attempt_service, config.region)
+                result = send_one(
+                    rpc, recipient, config.message, attempt_service, config.region,
+                    attachment=str(config.attachment_path) if config.attachment_path else None,
+                )
                 row.update({
                     "status": "ok" if result.get("guid") else "ok_unverified",
                     "message_id": str(result.get("id") or ""),

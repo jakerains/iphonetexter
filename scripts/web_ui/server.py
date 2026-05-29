@@ -176,7 +176,12 @@ class JobManager:
         def is_cancelled() -> bool:
             return record.cancel_flag.is_set()
 
-        hooks = self._build_hooks(list_id=record.list_id, job_id=record.id)
+        attachment = record.config.attachment_path
+        hooks = self._build_hooks(
+            list_id=record.list_id,
+            job_id=record.id,
+            attachment_path=str(attachment) if attachment else None,
+        )
 
         try:
             code = run_job(record.config, on_event, cancel=is_cancelled, hooks=hooks)
@@ -188,7 +193,7 @@ class JobManager:
             record.finished_at = time.time()
             loop.call_soon_threadsafe(record.queue.put_nowait, None)
 
-    def _build_hooks(self, list_id: int, job_id: str) -> Hooks:
+    def _build_hooks(self, list_id: int, job_id: str, attachment_path: Optional[str] = None) -> Hooks:
         repo = self.repo
 
         def is_already_done(normalized: str) -> bool:
@@ -217,7 +222,7 @@ class JobManager:
                 service=row.get("attempt_service") or None,
                 region=None,
                 message_body=row.get("message_body", ""),
-                attachment_path=None,
+                attachment_path=attachment_path,
                 status=row["status"],
                 message_rowid=int(row["message_id"]) if row.get("message_id") else None,
                 guid=row.get("guid") or None,
@@ -344,14 +349,16 @@ async def create_job(
     request: Request,
     message: str = Form(""),
     recipients: Optional[UploadFile] = Form(None),
+    attachment: Optional[UploadFile] = Form(None),
     list_id: Optional[str] = Form(None),
     imessage_pace: str = Form("3-6"),
     sms_pace: str = Form("15-30"),
     failure_ceiling: int = Form(DEFAULT_FAILURE_CEILING),
     confirm: Optional[str] = Form(None),
 ) -> RedirectResponse:
-    if not message.strip():
-        raise HTTPException(status_code=400, detail="Message body is required.")
+    has_attachment = bool(attachment and attachment.filename)
+    if not message.strip() and not has_attachment:
+        raise HTTPException(status_code=400, detail="Provide a message, an attachment, or both.")
 
     repo: Repo = request.app.state.repo
     has_recipients = recipients is not None and getattr(recipients, "filename", "")
@@ -368,6 +375,15 @@ async def create_job(
     job_dir.mkdir(parents=True, exist_ok=True)
     (job_dir / "message.txt").write_text(message, encoding="utf-8")
     recipients_path = job_dir / "recipients.csv"
+
+    attachment_path: Optional[Path] = None
+    if has_attachment:
+        safe_name = Path(attachment.filename or "attachment").name
+        attachment_path = job_dir / f"attachment-{safe_name}"
+        data = await attachment.read()
+        if not data:
+            raise HTTPException(status_code=400, detail="Attachment is empty.")
+        attachment_path.write_bytes(data)
 
     if has_recipients:
         raw = await recipients.read()
@@ -406,6 +422,7 @@ async def create_job(
         failure_ceiling=failure_ceiling,
         dry_run=(confirm is None),
         imsg_binary=IMSG_BIN,
+        attachment_path=attachment_path.resolve() if attachment_path else None,
     )
 
     loop = asyncio.get_running_loop()
